@@ -19,11 +19,12 @@ class SecurityGraphException(Exception):
 
 class SecurityGraph(object):
 
-    def __init__(self, hostname=SGRAPH_HOSTNAME, certificate=SGRAPH_CERTIFICATE, verbose=True):
+    def __init__(self, hostname=SGRAPH_HOSTNAME, certificate=SGRAPH_CERTIFICATE, verbose=True, retries=5):
         self.hostname = hostname
         self.certificate = certificate
         self.connection = None
         self.verbose = verbose
+        self.retries = retries
 
     def log(self, line):
         if self.verbose:
@@ -43,10 +44,16 @@ class SecurityGraph(object):
             self.log(url)
             if self.connection == None:
                 self.connect()
-            self.connection.request("GET", url)
-            response = self.connection.getresponse()
-            self.log(str(response.status) + "\t" + response.reason)
-            return json.loads(response.read())
+            retries = self.retries
+            while retries > 0:
+                try:
+                    self.connection.request("GET", url)
+                    response = self.connection.getresponse()
+                    self.log(str(response.status) + "\t" + response.reason)
+                    return json.loads(response.read())
+                except httplib.HTTPException, e:
+                    self.connect()
+                    retries -= 1
         except:
             return None
 
@@ -56,10 +63,17 @@ class SecurityGraph(object):
             self.log(url)
             if self.connection == None:
                 self.connection = httplib.HTTPSConnection(self.hostname, cert_file=self.certificate)
-            self.connection.request("POST", url, data, headers)
-            response = self.connection.getresponse()
-            self.log(str(response.status) + "\t" + response.reason)
-            return json.loads(response.read())
+
+            retries = self.retries
+            while retries > 0:
+                try: 
+                    self.connection.request("POST", url, data, headers)
+                    response = self.connection.getresponse()
+                    self.log(str(response.status) + "\t" + response.reason)
+                    return json.loads(response.read())
+                except httplib.HTTPException, e:
+                    self.connect()
+                    retries -= 1
         except:
             return None
         
@@ -78,7 +92,7 @@ class SecurityGraph(object):
     def infected(self, urls):
         urls_json = json.dumps(urls);
         hash = siphash.SipHash_2_4('Umbrella/OpenDNS', urls_json).hash()
-        digest = "{:x}".format(hash)
+        digest = "{0:x}".format(hash)
         sgraph_url = "/infected/names/" + urllib.quote(digest) + ".json"
         return self.request_post(sgraph_url, urls_json)
 
@@ -90,6 +104,9 @@ class SecurityGraph(object):
 
     def whois(self, domain):
         return self.request("/whois/name/" + domain + ".json")
+
+    def whois_ext(self, key, value):
+        return self.request("/whois/" + key + "/" + value + ".json")
 
     def as_for_ip(self, ip):
         return self.request("/bgp_routes/ip/" + ip + "/as_for_ip.json")
