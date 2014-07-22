@@ -1,13 +1,18 @@
 #!/usr/bin/env python
 
-import sys
+from urllib2 import Request, urlopen
+import os, sys
+import json
 import pprint
 from datetime import datetime 
-import json
-import os
 
-sys.path.append('./sgraph-api')
-import sgraph
+token = os.getenv('INVESTIGATE_TOKEN', False)
+headers = { 'Authorization': 'Bearer ' + token }
+
+def dns_db(domain):
+	request = Request('https://investigate.api.opendns.com/dnsdb/name/a/' + domain + '.json', headers=headers)
+	response_body = urlopen(request).read()
+	return json.loads(response_body)
 
 if not os.path.isdir("results"):
 	print ("Creating result directory")
@@ -27,16 +32,12 @@ with open('monitor.txt','rU') as f:
 		domains.append(domain)
 print (domains)
 
-
-sg = sgraph.SecurityGraph(verbose=False)
-
 timestamp = datetime.now().strftime('%Y%m%d-%H%M')
 
 print ("Requesting domain IPs")
 for domain in domains:
 	print(domain)
-	data = sg.dnsdb(domain)
-	
+	data = dns_db(domain)
 	if "rrs_tf" not in data:
 		continue
 	rrs_tf = data["rrs_tf"]
